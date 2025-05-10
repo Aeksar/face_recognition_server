@@ -1,0 +1,24 @@
+version: '3'
+
+services:
+  mongo:
+    image: mongo:latest
+    container_name: db
+    env_file:
+      - mongo.env
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    container_name: api
+    env_file:
+      - .env
+    ports:
+      - 8000:8000
+    build: .
+    depends_on:
+      mongo:
+        condition: service_healthy
