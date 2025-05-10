@@ -5,14 +5,13 @@ from config.config import Settings, logger
 
 cfg = Settings()
 
-async def connect_to_mongodb():
+def connect_to_mongodb():
     try:
         client = AsyncIOMotorClient(
             f"mongodb://{cfg.MONGO_USER}:{cfg.MONGO_PASSWORD}@{cfg.MONGO_HOST}:{cfg.MONGO_PORT}/"
         )
-        db = client[cfg.MONGO_DB]
-        logger.info("Succeful connect to MongoDB!")
-        return db
+        logger.info("Успешное подключение к монго")
+        return client
     except Exception as e:
-        logger.info(f"Unsucceful connect to MongoDB: {e}")
+        logger.info(f"Ошибка подключения к монго: {e}")
         return None

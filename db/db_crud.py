@@ -3,20 +3,21 @@ import cv2 as cv
 import numpy as np
 import asyncio
 import motor.motor_asyncio
-from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
+from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase, AsyncIOMotorClient
 from bson.binary import Binary
 from bson.objectid import ObjectId
 from typing import Optional
 
 
-from db.set_mongo import connect_to_mongodb
 from config.config import logger
-from utils import get_embedding
+from utils.img_handlers import get_embedding
 
 class FaceCollection:
     
-    def __init__(self, db: AsyncIOMotorDatabase):
-        self.collection = db.get_collection("faces")
+    def __init__(self, client: AsyncIOMotorClient):
+        self.client = client
+        self.db = self.client["face_recognition"]
+        self.collection = self.db["faces"]
     
     async def save(self, person_name: str, embedding: list[float], image_bytes: bytes):
         try:

@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     
 
 logging.basicConfig(
-    level=logging.ERROR,
+    level=logging.DEBUG,
     format="[{asctime}] #{levelname} {filename} ({lineno}): {message}",
     style='{',
     encoding='UTF-8'
