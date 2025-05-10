@@ -10,21 +10,23 @@ from contextlib import asynccontextmanager
 from deepface import DeepFace
 
 from db.set_mongo import connect_to_mongodb
-from db.db_crud import FaceCollection
-from api.models import Face
-from utils.api import local_save, get_face_handlers
+from api.models import NameModel
+from utils.api import local_save
 from config.config import logging
+from img_handlers.handlers import FaceHandlers, FaceCollection
 
 
 app = APIRouter(prefix="/faces")
 logger = logging.getLogger(__name__)
 
 CLIENT = None
+face_handlers = FaceHandlers()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global CLIENT
+    global CLIENT, face_handlers
     CLIENT = connect_to_mongodb()
+    await face_handlers.initial(CLIENT)
     yield
     CLIENT.close()
     
@@ -32,13 +34,14 @@ async def lifespan(app: FastAPI):
 @app.post("/add")
 async def add_face(
     file: Annotated[UploadFile, File(...)],
-    name: Annotated[str, Form(...)],
+    name: Annotated[NameModel, Form(...)],
 ):
     bytes_file = await file.read()
+    if len(bytes_file) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Файл слишком большой")
     path, name = local_save(bytes_file, name)
     
     logging.debug(f"given to save: {name} -> {path}")  
-    face_handlers = await get_face_handlers(CLIENT)
     face_db = await face_handlers.save_face(name, path)
     if face_db:
         return JSONResponse({"face_id": f"{face_db.inserted_id}"}, status_code=201)
@@ -50,22 +53,25 @@ async def find_face_endpoint(
     threshold: Optional[float] = Form(.5),
 ):  
     bytes_file = await file.read()
+    if len(bytes_file) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Файл слишком большой")
     buf = BytesIO(bytes_file)
     img = Image.open(buf)
     arr = np.array(img)
-    face_handlers = await get_face_handlers(CLIENT)
     person_name = await face_handlers.find_face(arr, threshold)
-
+    
+    mongo = FaceCollection(CLIENT)
     if person_name:
+        await mongo.write_log(person_name, True)
         return {"name": person_name}
-    else:
-        return JSONResponse({"message": "Лицо не найдено."}, status_code=404)
+    
+    await mongo.write_log("неизвестный", False)
+    return JSONResponse({"message": "Лицо не найдено."}, status_code=404)
 
 @app.delete("/remove", status_code=204)
 async def remove_face(
     face_id: Annotated[str, Form(...)]
 ):
-
     collection = FaceCollection(CLIENT)
     delete_result = await collection.delete(face_id)
 
@@ -77,14 +83,16 @@ async def remove_face(
 @app.put("/update", status_code=204)
 async def update_face(
     face_id: Annotated[str, Form(...)],
-    name: Annotated[str, Form(...)],
+    name: Annotated[NameModel, Form(...)],
     file: Annotated[UploadFile, File(...)]
 ):
     
     collection = FaceCollection(CLIENT)
-    image_bytes = await file.read()
-    path, name = local_save(image_bytes, name)
-    update_result = await collection.update(face_id, path, image_bytes)
+    bytes_file = await file.read()
+    if len(bytes_file) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Файл слишком большой")
+    path, name = local_save(bytes_file, name)
+    update_result = await collection.update(face_id, path, bytes_file)
     if update_result:
         return
-    raise HTTPException(status_code=500, detail="Cann't update face")
+    raise HTTPException(status_code=500, detail="Не удалось обновить запись")

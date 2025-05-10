@@ -1,7 +1,11 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+import re
 
-class Face(BaseModel):
-    _id: str
+class NameModel(BaseModel):
     name: str
-    embedding: list[float]
-    image: bytes
+
+    @field_validator("name")
+    def validate_name(cls, v):
+        if not re.match(r"^[a-zA-Z\s_]+$", v):
+            raise ValueError("Имя должно содержать только буквы, пробелы или подчёркивания")
+        return v

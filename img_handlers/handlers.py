@@ -22,20 +22,20 @@ class FaceHandlers:
         await self._load_index()
         
     async def _load_index(self):
-        # try:
+        try:
             collection = FaceCollection(self.client)
-            faces = collection.get_all()
+            faces = await collection.find_all()
             embeddings = []
             self.names = []
-            async for face in faces:
+            for face in faces:
                 embedding = np.array(face["embedding"], dtype=np.float64)
                 embeddings.append(embedding)
                 self.names.append(face["name"])
             if embeddings:
                 embeddings = np.vstack(embeddings)
                 self.index.add(embeddings)
-        # except Exception as e:
-        #     logger.error(f"Ошибка при загрузке в индекс {e}")
+        except Exception as e:
+            logger.error(f"Ошибка при загрузке в индекс {e}")
     
     async def save_face(self, person_name: str, img_path: str):
         try:

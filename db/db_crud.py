@@ -1,13 +1,8 @@
-from cv2.typing import MatLike
-import cv2 as cv
-import numpy as np
-import asyncio
-import motor.motor_asyncio
-from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase, AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient
 from bson.binary import Binary
 from bson.objectid import ObjectId
-from typing import Optional
-
+from datetime import datetime
+import asyncio
 
 from config.config import logger
 from utils.img_handlers import get_embedding
@@ -18,6 +13,7 @@ class FaceCollection:
         self.client = client
         self.db = self.client["face_recognition"]
         self.collection = self.db["faces"]
+        self.event_log = self.db["event_log"]
     
     async def save(self, person_name: str, embedding: list[float], image_bytes: bytes):
         try:
@@ -31,8 +27,9 @@ class FaceCollection:
         except Exception as e:
             logger.error(f"Oshibka: {e}")
     
-    def get_all(self):
-        return self.collection.find()
+    async def find_all(self):
+        cursor = await self.collection.find().to_list()
+        return cursor
     
     async def delete(self, id):
         res = await self.collection.delete_one({"_id": ObjectId(id)})
@@ -59,3 +56,13 @@ class FaceCollection:
         if update_result.matched_count > 0:
             return True
         return False
+
+    async def write_log(self, name: str, success: bool):
+        res = await self.event_log.insert_one({
+            "name": name,
+            "time": datetime.now(),
+            "success": success
+        })
+        
+        logger.debug(f"\n\n\nLOG WRITED: {res} \n\n\n\n")
+    
