@@ -1,6 +1,7 @@
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson.binary import Binary
 from bson.objectid import ObjectId
+from bson.datetime_ms import DatetimeMS
 from datetime import datetime
 import asyncio
 
@@ -60,7 +61,7 @@ class FaceCollection:
     async def write_log(self, name: str, success: bool):
         res = await self.event_log.insert_one({
             "name": name,
-            "time": datetime.now(),
+            "time": DatetimeMS(datetime.now()),
             "success": success
         })
         

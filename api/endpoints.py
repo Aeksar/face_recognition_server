@@ -1,6 +1,7 @@
 from fastapi import APIRouter, File, UploadFile, Form, HTTPException, FastAPI
 from fastapi.responses import JSONResponse
-from typing import Optional, Annotated
+from pydantic import NaiveDatetime
+from typing import Optional, Annotated, List
 import logging
 import cv2 as cv
 from io import BytesIO
@@ -8,15 +9,16 @@ import numpy as np
 from PIL import Image
 from contextlib import asynccontextmanager
 from deepface import DeepFace
+from datetime import datetime
 
 from db.set_mongo import connect_to_mongodb
-from api.models import NameModel
+from api.models import NameModel, LogModel
 from utils.api import local_save
 from config.config import logging
 from img_handlers.handlers import FaceHandlers, FaceCollection
 
 
-app = APIRouter(prefix="/faces")
+app = APIRouter()
 logger = logging.getLogger(__name__)
 
 CLIENT = None
@@ -31,7 +33,7 @@ async def lifespan(app: FastAPI):
     CLIENT.close()
     
 
-@app.post("/add")
+@app.post("/faces/add")
 async def add_face(
     file: Annotated[UploadFile, File(...)],
     name: Annotated[NameModel, Form(...)],
@@ -47,7 +49,7 @@ async def add_face(
         return JSONResponse({"face_id": f"{face_db.inserted_id}"}, status_code=201)
     raise HTTPException(status_code=500, detail="Vse govno")
 
-@app.post("/find")
+@app.post("/faces/find")
 async def find_face_endpoint(
     file: Annotated[UploadFile, File(...)],
     threshold: Optional[float] = Form(.5),
@@ -68,7 +70,7 @@ async def find_face_endpoint(
     await mongo.write_log("неизвестный", False)
     return JSONResponse({"message": "Лицо не найдено."}, status_code=404)
 
-@app.delete("/remove", status_code=204)
+@app.delete("/faces/remove", status_code=204)
 async def remove_face(
     face_id: Annotated[str, Form(...)]
 ):
@@ -80,7 +82,7 @@ async def remove_face(
     raise HTTPException(status_code=404, detail=f"Лицо с ID {face_id} не найдено.")
 
 
-@app.put("/update", status_code=204)
+@app.put("/faces/update", status_code=204)
 async def update_face(
     face_id: Annotated[str, Form(...)],
     name: Annotated[NameModel, Form(...)],
@@ -96,3 +98,19 @@ async def update_face(
     if update_result:
         return
     raise HTTPException(status_code=500, detail="Не удалось обновить запись")
+
+
+@app.get("/log", response_model=List[LogModel])
+async def get_logs( 
+    start: Optional[datetime], 
+    end: Optional[datetime],
+    name: Optional[str]
+):
+    query = {}
+    if start and end:
+        query["time"] = {"$gte": start, "$lte": end}
+    if name:
+        query["name"] = name
+    
+    logs = await FaceCollection(CLIENT).event_log.find(query).to_list()
+    return logs
