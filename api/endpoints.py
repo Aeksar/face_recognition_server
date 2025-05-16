@@ -10,10 +10,11 @@ from PIL import Image
 from contextlib import asynccontextmanager
 from deepface import DeepFace
 from datetime import datetime
+import re
 
 from db.set_mongo import connect_to_mongodb
 from api.models import NameModel, LogModel
-from utils.api import local_save
+from utils.api import local_save, transliterate
 from config.config import logging
 from img_handlers.handlers import FaceHandlers, FaceCollection
 
@@ -22,20 +23,19 @@ app = APIRouter()
 logger = logging.getLogger(__name__)
 
 CLIENT = None
-face_handlers = FaceHandlers()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global CLIENT, face_handlers
+    global CLIENT
     CLIENT = connect_to_mongodb()
-    await face_handlers.initial(CLIENT)
     yield
     CLIENT.close()
     
 
 @app.post("/faces/add")
 async def add_face(
-    file: Annotated[UploadFile, File(...)],
+    file: Annotated[UploadFile, File(max_length=5242880)],
     name: Annotated[NameModel, Form(...)],
 ):
     bytes_file = await file.read()
@@ -43,7 +43,8 @@ async def add_face(
         raise HTTPException(status_code=400, detail="Файл слишком большой")
     path, name = local_save(bytes_file, name)
     
-    logging.debug(f"given to save: {name} -> {path}")  
+    logging.debug(f"given to save: {name} -> {path}")
+    face_handlers = FaceHandlers(CLIENT)
     face_db = await face_handlers.save_face(name, path)
     if face_db:
         return JSONResponse({"face_id": f"{face_db.inserted_id}"}, status_code=201)
@@ -60,6 +61,7 @@ async def find_face_endpoint(
     buf = BytesIO(bytes_file)
     img = Image.open(buf)
     arr = np.array(img)
+    face_handlers = FaceHandlers(CLIENT)
     person_name = await face_handlers.find_face(arr, threshold)
     
     mongo = FaceCollection(CLIENT)
@@ -102,15 +104,24 @@ async def update_face(
 
 @app.get("/log", response_model=List[LogModel])
 async def get_logs( 
-    start: Optional[datetime], 
-    end: Optional[datetime],
-    name: Optional[str]
+    start: datetime = None, 
+    end: datetime = None,
+    name: str = None
 ):
+    logger.debug(f"\n\n\ntake rquest with {start, end, name}\n\n\n")
     query = {}
     if start and end:
         query["time"] = {"$gte": start, "$lte": end}
+    elif start:
+        query["time"] = {"$gte": start}
+    elif end:
+        query["time"] = {"$lte": end}
     if name:
+        name = name.replace(" ", "_")
+        if not re.match(r"^[A-Z][a-z]+_[A-Z][a-z]+$"):
+            raise HTTPException(status_code=422, detail="Не валидное имя пользователя")
         query["name"] = name
     
     logs = await FaceCollection(CLIENT).event_log.find(query).to_list()
+    logger.debug(f"\n\n\n DANO: {logs} \n\n\n")
     return logs

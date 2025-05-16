@@ -15,6 +15,10 @@ class FaceCollection:
         self.db = self.client["face_recognition"]
         self.collection = self.db["faces"]
         self.event_log = self.db["event_log"]
+        
+    async def find_one(self, person_name: str):
+        result = await self.collection.find_one({"name": person_name})
+        return result
     
     async def save(self, person_name: str, embedding: list[float], image_bytes: bytes):
         try:
@@ -29,8 +33,8 @@ class FaceCollection:
             logger.error(f"Oshibka: {e}")
     
     async def find_all(self):
-        cursor = await self.collection.find().to_list()
-        return cursor
+        result = await self.collection.find().to_list()
+        return result
     
     async def delete(self, id):
         res = await self.collection.delete_one({"_id": ObjectId(id)})

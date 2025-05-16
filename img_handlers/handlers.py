@@ -4,7 +4,7 @@ import numpy as np
 from bson.binary import Binary
 from deepface import DeepFace
 from faiss import IndexFlatL2
-
+from motor.motor_asyncio import AsyncIOMotorClient
 
 from db.db_crud import FaceCollection
 from db.set_mongo import connect_to_mongodb
@@ -13,29 +13,8 @@ from utils.img_handlers import cosine_similarity, img_to_bytes, get_embedding
 
 
 class FaceHandlers:
-    async def initial(self, client):
-        
+    def __init__(self, client: AsyncIOMotorClient):
         self.client = client
-        self.emb_size = 512
-        self.index = IndexFlatL2(self.emb_size)
-        self.names = []
-        await self._load_index()
-        
-    async def _load_index(self):
-        try:
-            collection = FaceCollection(self.client)
-            faces = await collection.find_all()
-            embeddings = []
-            self.names = []
-            for face in faces:
-                embedding = np.array(face["embedding"], dtype=np.float64)
-                embeddings.append(embedding)
-                self.names.append(face["name"])
-            if embeddings:
-                embeddings = np.vstack(embeddings)
-                self.index.add(embeddings)
-        except Exception as e:
-            logger.error(f"Ошибка при загрузке в индекс {e}")
     
     async def save_face(self, person_name: str, img_path: str):
         try:
@@ -44,18 +23,13 @@ class FaceHandlers:
             img = cv.imread(img_path)
             embedding = get_embedding(img_path).tolist()
             img_bytes = Binary(img_to_bytes(img))
-            if await collection.collection.find_one({"name": person_name}):
+            
+            if await collection.find_one({"name": person_name}):
                 logger.warning("Попытка добавления существующего пользователя")
                 return None
 
             result = await collection.save(person_name, embedding, img_bytes)
-            
-            
-            self.index.add(np.array([embedding], dtype=np.float64))
-            self.names.append(person_name)
-            
             logger.info(f"{person_name} добавлен в монго")
-            
             return result
             
         except Exception as e:
@@ -65,38 +39,31 @@ class FaceHandlers:
             
     async def find_face(self, img: MatLike, threshhold=.5):
         try:
-            collection = FaceCollection(self.client)
             embedding = get_embedding(img)
-            
-            distances, indices = self.index.search(np.array([embedding], dtype=np.float64), 1)
-            distance = distances[0][0]
-            index = indices[0][0]
-            
-            cosine_distance = 1 - (distance / 2)
-            if cosine_distance < threshhold and index < len(self.names):
-                logger.info("Пользователь найден")
-                return self.names[index]
-            logger.info("Пользователь НЕ найден")
-            return None
+
+            collection = FaceCollection(self.client)
+            all_faces = await collection.find_all()
+            min_distance = float("inf")
+            print(all_faces)
+            for face_data in all_faces:
+                print(face_data)
+                db_embedding = np.array([float(x) for x in face_data["embedding"]], np.float64)
+                cur_dist = 1 - cosine_similarity(embedding, db_embedding)
+                logger.debug(f"ZXC:\n {cur_dist}\n\n\n")
+                
+                if cur_dist < min_distance:
+                    min_distance = cur_dist
+                    person = face_data["name"]
+                    
+            if min_distance < threshhold:
+                logger.info(f"Face find: {person}, min distance {min_distance}")
+                return person
+            else:
+                logger.info(f"Face not found, min distance {min_distance}")
+                return None
+        
         except Exception as e:
             logger.error(f"Ошибка при поиске лица: {e}")
-            
-            # async for face_data in collection.get_all():
-            #     db_embedding = np.array([float(x) for x in face_data["embedding"]], np.float64)
-            #     cur_dist = 1 - cosine_similarity(embedding, db_embedding)
-                    
-            #     logger.debug(f"ZXC:\n {cur_dist}\n\n\n")
-                
-            #     if cur_dist < min_distance:
-            #         min_distance = cur_dist
-            #         person = face_data["name"]
-                    
-            # if min_distance < threshhold:
-            #     logger.info(f"Face find: {person}, min distance {min_distance}")
-            #     return person
-            # else:
-            #     logger.info(f"Face not found, min distance {min_distance}")
-            #     return None
     
     
 
