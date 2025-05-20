@@ -3,19 +3,42 @@ import cv2 as cv
 import numpy as np
 from bson.binary import Binary
 from deepface import DeepFace
-from faiss import IndexFlatL2
+import faiss
 from motor.motor_asyncio import AsyncIOMotorClient
+from math import sqrt
 
 from db.db_crud import FaceCollection
 from db.set_mongo import connect_to_mongodb
 from config.config import logger
-from utils.img_handlers import cosine_similarity, img_to_bytes, get_embedding
+from utils.img_handlers import img_to_bytes, get_embedding
 
 
 class FaceHandlers:
     def __init__(self, client: AsyncIOMotorClient):
         self.client = client
-    
+        self.emb_size = 512
+        self.index = faiss.IndexFlatL2(self.emb_size)
+        self.names = []
+        
+    async def _load_index(self):
+        try:
+            collection = FaceCollection(self.client)
+            faces = await collection.find_all()
+            embeddings = []
+            self.names = []
+            for face in faces:
+                embedding = np.array(face["embedding"], dtype=np.float64)            
+                normilize_embedding = embedding / np.linalg.norm(embedding)
+                embeddings.append(normilize_embedding)
+                
+                name = face["name"]
+                self.names.append(name)
+            if embeddings:
+                self.index.add(np.vstack(embeddings))
+            print(self.names)
+        except Exception as e:
+            logger.error(f"Ошибка при загрузке в индекс {e}")
+
     async def save_face(self, person_name: str, img_path: str):
         try:
             collection = FaceCollection(self.client)
@@ -29,7 +52,11 @@ class FaceHandlers:
                 return None
 
             result = await collection.save(person_name, embedding, img_bytes)
-            logger.info(f"{person_name} добавлен в монго")
+            logger.info(f"{person_name} добавлен в монго")         
+            
+            self.index.add(np.array([embedding], dtype=np.float64))
+            self.names.append(person_name)
+            logger.info(f"{person_name} добавлен в индекс")    
             return result
             
         except Exception as e:
@@ -37,33 +64,25 @@ class FaceHandlers:
             raise
         
             
-    async def find_face(self, img: MatLike, threshhold=.5):
+    def find_face(self, img: np.ndarray, threshhold=.5):
         try:
-            embedding = get_embedding(img)
+            detected_imgs = DeepFace.represent(img_path=img, model_name="ArcFace", detector_backend="mtcnn")
+            embedding = np.array([float(x) for x in detected_imgs[0].get("embedding")])
+            normilize_embedding = embedding / np.linalg.norm(embedding)
+            distances, indices = self.index.search(np.array([normilize_embedding], dtype=np.float64), 1)
+            distance = distances[0][0]
+            index = indices[0][0]
+            
+            normilize_distance = distance / sqrt(512) * 10
+            if normilize_distance < threshhold and index < len(self.names):
+                logger.info("Пользователь найден")
+                return self.names[index], normilize_distance
+            logger.info("Пользователь НЕ найден")
+            return None, normilize_distance
 
-            collection = FaceCollection(self.client)
-            all_faces = await collection.find_all()
-            min_distance = float("inf")
-            print(all_faces)
-            for face_data in all_faces:
-                print(face_data)
-                db_embedding = np.array([float(x) for x in face_data["embedding"]], np.float64)
-                cur_dist = 1 - cosine_similarity(embedding, db_embedding)
-                logger.debug(f"ZXC:\n {cur_dist}\n\n\n")
-                
-                if cur_dist < min_distance:
-                    min_distance = cur_dist
-                    person = face_data["name"]
-                    
-            if min_distance < threshhold:
-                logger.info(f"Face find: {person}, min distance {min_distance}")
-                return person
-            else:
-                logger.info(f"Face not found, min distance {min_distance}")
-                return None
-        
         except Exception as e:
             logger.error(f"Ошибка при поиске лица: {e}")
+            raise
     
     
 

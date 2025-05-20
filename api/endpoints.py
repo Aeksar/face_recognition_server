@@ -22,13 +22,15 @@ from img_handlers.handlers import FaceHandlers, FaceCollection
 app = APIRouter()
 logger = logging.getLogger(__name__)
 
-CLIENT = None
+CLIENT, face_handlers = None, None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global CLIENT
+    global CLIENT, face_handlers
     CLIENT = connect_to_mongodb()
+    face_handlers = FaceHandlers(CLIENT)
+    await face_handlers._load_index()
     yield
     CLIENT.close()
     
@@ -44,7 +46,6 @@ async def add_face(
     path, name = local_save(bytes_file, name)
     
     logging.debug(f"given to save: {name} -> {path}")
-    face_handlers = FaceHandlers(CLIENT)
     face_db = await face_handlers.save_face(name, path)
     if face_db:
         return JSONResponse({"face_id": f"{face_db.inserted_id}"}, status_code=201)
@@ -55,22 +56,25 @@ async def find_face_endpoint(
     file: Annotated[UploadFile, File(...)],
     threshold: Optional[float] = Form(.5),
 ):  
+    logger.debug(threshold)
     bytes_file = await file.read()
     if len(bytes_file) > 5 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Файл слишком большой")
     buf = BytesIO(bytes_file)
     img = Image.open(buf)
     arr = np.array(img)
-    face_handlers = FaceHandlers(CLIENT)
-    person_name = await face_handlers.find_face(arr, threshold)
+    person_name, min_distance = face_handlers.find_face(arr, threshold)
+    response = {"threshold": threshold, "min_distance": float(min_distance)}
     
     mongo = FaceCollection(CLIENT)
     if person_name:
         await mongo.write_log(person_name, True)
-        return {"name": person_name}
+        response["name"] = person_name
+        return JSONResponse(response)
     
     await mongo.write_log("неизвестный", False)
-    return JSONResponse({"message": "Лицо не найдено."}, status_code=404)
+    response["message"] =  "Лицо не найдено"
+    return JSONResponse(response, status_code=404)
 
 @app.delete("/faces/remove", status_code=204)
 async def remove_face(
@@ -118,7 +122,7 @@ async def get_logs(
         query["time"] = {"$lte": end}
     if name:
         name = name.replace(" ", "_")
-        if not re.match(r"^[A-Z][a-z]+_[A-Z][a-z]+$"):
+        if not re.match(r"^[A-Z][a-z]+_[A-Z][a-z]+$", name):
             raise HTTPException(status_code=422, detail="Не валидное имя пользователя")
         query["name"] = name
     
