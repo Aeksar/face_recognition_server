@@ -3,10 +3,9 @@ from bson.binary import Binary
 from bson.objectid import ObjectId
 from bson.datetime_ms import DatetimeMS
 from datetime import datetime
-import asyncio
 
 from config.config import logger
-from utils.img_handlers import get_embedding
+from utils import get_embedding
 
 class FaceCollection:
     
@@ -22,10 +21,11 @@ class FaceCollection:
     
     async def save(self, person_name: str, embedding: list[float], image_bytes: bytes):
         try:
+            image = Binary(image_bytes)
             face_data = {
                 "name": person_name,
                 "embedding": embedding,
-                "image": image_bytes,
+                "image": image,
             }
             result = await self.collection.insert_one(face_data)
             return result

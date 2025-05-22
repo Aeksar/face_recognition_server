@@ -1,20 +1,17 @@
 from fastapi import APIRouter, File, UploadFile, Form, HTTPException, FastAPI
 from fastapi.responses import JSONResponse
-from pydantic import NaiveDatetime
 from typing import Optional, Annotated, List
 import logging
-import cv2 as cv
 from io import BytesIO
 import numpy as np
 from PIL import Image
 from contextlib import asynccontextmanager
-from deepface import DeepFace
 from datetime import datetime
 import re
 
 from db.set_mongo import connect_to_mongodb
 from api.models import NameModel, LogModel
-from utils.api import local_save, transliterate
+from utils import local_save
 from config.config import logging
 from img_handlers.handlers import FaceHandlers, FaceCollection
 
@@ -37,22 +34,20 @@ async def lifespan(app: FastAPI):
 
 @app.post("/faces/add")
 async def add_face(
-    file: Annotated[UploadFile, File(max_length=5242880)],
-    name: Annotated[NameModel, Form(...)],
+    file: Annotated[UploadFile, Form(...)],
+    name: Annotated[str, Form(...)]
 ):
     bytes_file = await file.read()
     if len(bytes_file) > 5 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Файл слишком большой")
-    path, name = local_save(bytes_file, name)
     
-    logging.debug(f"given to save: {name} -> {path}")
-    face_db = await face_handlers.save_face(name, path)
+    face_db = await face_handlers.save_face(name, bytes_file)
     if face_db:
         return JSONResponse({"face_id": f"{face_db.inserted_id}"}, status_code=201)
-    raise HTTPException(status_code=500, detail="Vse govno")
+    raise HTTPException(status_code=500, detail="Не удалось добавить пользователя")
 
 @app.post("/faces/find")
-async def find_face_endpoint(
+async def find_face(
     file: Annotated[UploadFile, File(...)],
     threshold: Optional[float] = Form(.5),
 ):  

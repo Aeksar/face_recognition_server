@@ -12,7 +12,7 @@ def img_to_bytes(img: MatLike):
         return encoded_img.tobytes()
     raise ValueError(f"cannot convert to bytes {img}")
 
-def get_embedding(img_path: Union[str, np.ndarray]):
-    embedding = DeepFace.represent(img_path=img_path, model_name="ArcFace", detector_backend="mtcnn")
-    embedding = np.array([float(x) for x in embedding[0].get("embedding")])
+def get_embedding(img: Union[str, np.ndarray]):
+    detected_imgs = DeepFace.represent(img_path=img, model_name="ArcFace", detector_backend="mtcnn")
+    embedding = np.array([float(x) for x in detected_imgs[0].get("embedding")])
     return embedding

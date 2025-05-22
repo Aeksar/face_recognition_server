@@ -1,16 +1,15 @@
-from cv2.typing import MatLike
 import cv2 as cv
 import numpy as np
-from bson.binary import Binary
-from deepface import DeepFace
 import faiss
 from motor.motor_asyncio import AsyncIOMotorClient
 from math import sqrt
+from PIL import Image
+import io
 
 from db.db_crud import FaceCollection
 from db.set_mongo import connect_to_mongodb
 from config.config import logger
-from utils.img_handlers import img_to_bytes, get_embedding
+from utils import get_embedding
 
 
 class FaceHandlers:
@@ -39,22 +38,24 @@ class FaceHandlers:
         except Exception as e:
             logger.error(f"Ошибка при загрузке в индекс {e}")
 
-    async def save_face(self, person_name: str, img_path: str):
+    async def save_face(self, person_name: str, img_bytes: bytes):
         try:
             collection = FaceCollection(self.client)
             
-            img = cv.imread(img_path)
-            embedding = get_embedding(img_path).tolist()
-            img_bytes = Binary(img_to_bytes(img))
+            buf = io.BytesIO(img_bytes)
+            img = Image.open(buf)
+            arr = np.array(img)
+            embedding = get_embedding(arr)
             
-            if await collection.find_one({"name": person_name}):
+            if await collection.find_one(person_name):
                 logger.warning("Попытка добавления существующего пользователя")
                 return None
 
-            result = await collection.save(person_name, embedding, img_bytes)
+            result = await collection.save(person_name, embedding.tolist(), img_bytes)
             logger.info(f"{person_name} добавлен в монго")         
             
-            self.index.add(np.array([embedding], dtype=np.float64))
+            normilize_embedding = embedding / np.linalg.norm(embedding)
+            self.index.add(np.array([normilize_embedding], dtype=np.float64))
             self.names.append(person_name)
             logger.info(f"{person_name} добавлен в индекс")    
             return result
@@ -66,8 +67,7 @@ class FaceHandlers:
             
     def find_face(self, img: np.ndarray, threshhold=.5):
         try:
-            detected_imgs = DeepFace.represent(img_path=img, model_name="ArcFace", detector_backend="mtcnn")
-            embedding = np.array([float(x) for x in detected_imgs[0].get("embedding")])
+            embedding = get_embedding(img)
             normilize_embedding = embedding / np.linalg.norm(embedding)
             distances, indices = self.index.search(np.array([normilize_embedding], dtype=np.float64), 1)
             distance = distances[0][0]

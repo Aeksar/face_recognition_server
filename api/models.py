@@ -1,5 +1,5 @@
 from pydantic import BaseModel, field_validator
-from typing import Annotated
+from fastapi import UploadFile
 from datetime import datetime
 import re
 
@@ -8,10 +8,11 @@ class NameModel(BaseModel):
     name: str
 
     @field_validator("name")
-    def validate_name(cls, v):
-        if not re.match(r"^[a-zA-Z]+_[a-zA-Z]+$", v):
-            raise ValueError("Имя должно содержать только буквы, пробелы или подчёркивания")
-        return v
+    def validate_name(cls, v: str):
+        v = v.strip()
+        if not re.match(r"^[a-zA-Zа-яА-Я]+_[a-zA-Zа-яА-Я]+$", v):
+            raise ValueError("Имя должно содержать только буквы и нижнее подчёркивание")
+        return v  
     
 class LogModel(BaseModel):
     _id: str
