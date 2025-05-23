@@ -34,7 +34,7 @@ async def lifespan(app: FastAPI):
 
 @app.post("/faces/add")
 async def add_face(
-    file: Annotated[UploadFile, Form(...)],
+    file: Annotated[UploadFile, File(...)],
     name: Annotated[str, Form(...)]
 ):
     bytes_file = await file.read()
