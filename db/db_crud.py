@@ -3,7 +3,10 @@ from bson.binary import Binary
 from bson.objectid import ObjectId
 from bson.datetime_ms import DatetimeMS
 from datetime import datetime
+from pymongo import ASCENDING
+from bson.binary import Binary
 
+from config.config import EMBEDDING_EXPIRE
 from config.config import logger
 from utils import get_embedding
 
@@ -14,18 +17,19 @@ class FaceCollection:
         self.db = self.client["face_recognition"]
         self.collection = self.db["faces"]
         self.event_log = self.db["event_log"]
-        
+    
+    async def create_index(self):
+        await self.collection.create_index([("embedding", ASCENDING)], expireAfterSeconds=EMBEDDING_EXPIRE)
+    
     async def find_one(self, person_name: str):
         result = await self.collection.find_one({"name": person_name})
         return result
     
-    async def save(self, person_name: str, embedding: list[float], image_bytes: bytes):
+    async def save(self, person_name: str, embedding: bytes):
         try:
-            image = Binary(image_bytes)
             face_data = {
                 "name": person_name,
-                "embedding": embedding,
-                "image": image,
+                "embedding": Binary(embedding),
             }
             result = await self.collection.insert_one(face_data)
             return result

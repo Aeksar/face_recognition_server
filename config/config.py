@@ -1,5 +1,9 @@
 from pydantic_settings import BaseSettings
+from pydantic import field_serializer
 import logging
+
+
+EMBEDDING_EXPIRE = 2_592_000
 
 class Settings(BaseSettings):
     MONGO_HOST: str
@@ -9,9 +13,13 @@ class Settings(BaseSettings):
     MONGO_USER: str
     MONGO_PASSWORD: str
     
+    SECRET_KEY: bytes
+    
+    class Config:
+        env_file = ".env"
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format="[{asctime}] #{levelname} {filename} ({lineno}): {message}",
     style='{',
     encoding='UTF-8'
@@ -20,3 +28,4 @@ logging.basicConfig(
 formatter = logging.Formatter("[{asctime}] #{levelname} {filename} ({lineno}): {message}", style='{',)
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)

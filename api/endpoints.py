@@ -27,6 +27,7 @@ async def lifespan(app: FastAPI):
     global CLIENT, face_handlers
     CLIENT = connect_to_mongodb()
     face_handlers = FaceHandlers(CLIENT)
+    await FaceCollection(CLIENT).create_index()
     await face_handlers._load_index()
     yield
     CLIENT.close()
@@ -49,7 +50,7 @@ async def add_face(
 @app.post("/faces/find")
 async def find_face(
     file: Annotated[UploadFile, File(...)],
-    threshold: Optional[float] = Form(.5),
+    threshold: Optional[float] = Form(.6),
 ):  
     logger.debug(threshold)
     bytes_file = await file.read()
