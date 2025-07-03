@@ -3,7 +3,6 @@ import numpy as np
 import faiss
 from cryptography.fernet import Fernet
 from motor.motor_asyncio import AsyncIOMotorClient
-from Crypto.Cipher import AES
 from math import sqrt
 from PIL import Image
 import io
@@ -22,7 +21,6 @@ class FaceHandlers:
         self.index = faiss.IndexFlatL2(emb_size)
         self.names = []
         key = base64.urlsafe_b64encode(Settings().SECRET_KEY)
-        print(f"ZALUPA: {key}")
         self.cipher = Fernet(key)
         
     async def _load_index(self):

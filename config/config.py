@@ -1,5 +1,4 @@
 from pydantic_settings import BaseSettings
-from pydantic import field_serializer
 import logging
 
 
@@ -25,7 +24,6 @@ logging.basicConfig(
     encoding='UTF-8'
 )
 
-formatter = logging.Formatter("[{asctime}] #{levelname} {filename} ({lineno}): {message}", style='{',)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)

@@ -118,7 +118,7 @@ async def get_logs(
         query["time"] = {"$lte": end}
     if name:
         name = name.replace(" ", "_")
-        if not re.match(r"^[A-Z][a-z]+_[A-Z][a-z]+$", name):
+        if not re.match(r"^[a-z]+_[a-z]+$", name):
             raise HTTPException(status_code=422, detail="Не валидное имя пользователя")
         query["name"] = name
     

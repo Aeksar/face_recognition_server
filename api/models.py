@@ -1,5 +1,4 @@
 from pydantic import BaseModel, field_validator
-from fastapi import UploadFile
 from datetime import datetime
 import re
 

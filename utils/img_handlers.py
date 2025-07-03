@@ -1,7 +1,6 @@
 import numpy as np
 import cv2 as cv
 from cv2.typing import MatLike
-from numpy.typing import ArrayLike
 from typing import Union
 from deepface import DeepFace
 
